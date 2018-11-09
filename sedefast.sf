@@ -2,7 +2,8 @@
 
 func main () {
   var tokens = ARGF.slurp.split(/\s/).grep{ _ } # no string literals yet
-  var stack = []
+  var (stack, retain) = ([], [])
+
   for index, tok in tokens.zip_indices() {
     if (tok.is_numeric) {
       stack.push(tok.to_n)
@@ -12,13 +13,13 @@ func main () {
         next
       }
 
-      var code = "#{stack.last}.method('#{tok}')"
+      var code = "#{stack.pop}.method('#{tok}')"
       var (successful_result, pop_n)
 
-      for inputs_count in (-stack.last_index .. 0) {
+      for inputs_count in ((-stack.last_index) .. 0) {
         var inputs_slice = stack[inputs_count .. 0].to_a
         var inputs_fmt = inputs_slice.reverse.join(", ")
-        var popped = inputs_slice.len+1
+        var popped = inputs_slice.len
         var result
         try {
           result = eval("#{code}(#{inputs_fmt})")
