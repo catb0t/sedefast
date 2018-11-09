@@ -1,0 +1,12 @@
+#! sidef -WkP12
+
+# how shiny is your Sidef?
+class Luciu {
+
+}
+
+# test-generator based on input / expectation specification
+# this kind of thing is really useless in some contexts, let's see
+class Meter {
+
+}

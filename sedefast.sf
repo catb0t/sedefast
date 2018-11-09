@@ -1,0 +1,40 @@
+#! sidef -WkP12
+
+func main () {
+  var tokens = ARGF.slurp.split(/\s/).grep{ _ } # no string literals yet
+  var stack = []
+  for index, tok in tokens.zip_indices() {
+    if (tok.is_numeric) {
+      stack.push(tok.to_n)
+    } else {
+      if (! defined(stack.last) ) {
+        say "nvm, empty stack: #{index} #{tok}"
+        next
+      }
+
+      var code = "#{stack.last}.method('#{tok}')"
+      var (successful_result, pop_n)
+
+      for inputs_count in (-stack.last_index .. 0) {
+        var inputs_slice = stack[inputs_count .. 0].to_a
+        var inputs_fmt = inputs_slice.reverse.join(", ")
+        var popped = inputs_slice.len+1
+        var result
+        try {
+          result = eval("#{code}(#{inputs_fmt})")
+        } catch {}
+        successful_result = result
+        pop_n = popped
+        break
+      }
+
+      stack.pop(pop_n)
+      stack.push(successful_result)
+    }
+    say stack.dump
+  }
+}
+
+if (__FILE__ == __MAIN__) {
+  main()
+}
