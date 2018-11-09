@@ -1,12 +1,138 @@
 #! sidef -WkP12
 
 # how shiny is your Sidef?
+class Test (case_name) {
+
+  has reasons = []
+
+  method generate_is (test_like = true) {
+    -> returned_func (*args) {
+      var reason = Hash(:func => [__FUNC_NAME__, __METHOD_NAME__], :called_with => args, :test_like => test_like)
+      var conjugate_test_like = (test_like ? "truth:  " : "falsity:")
+
+      # no arguments = pass (?)
+      given (args.len) {
+        when (0) {
+          reason += Hash(:result => :pass, :expl => "empty arguments")
+          goto :passed
+        }
+        when (1) {
+          reason += Hash(:caused_by => args[0], :expl => "#{test_like} expression")
+          if (test_like == Bool(args[0])) {
+            reason += Hash(:result => :pass)
+            goto :passed
+          } else {
+            reason += Hash(:result => :pass)
+            goto :failed
+          }
+        }
+        default {
+          var last_val
+          args.combinations(2).each {
+            last_val = _
+            var (first, second) = last_val...
+            if (test_like != (first == second)) {
+              var p = (test_like ? "" : "in")
+              reason += Hash(:result => :Fail, :caused_by => last_val, :expl => "found #{p}equal arguments")
+              goto :failed
+            }
+          }
+          var p = (test_like ? "" : "in")
+          reason += Hash(:result => :Fail, :caused_by => last_val, :expl => "all #{p}equal arguments")
+          goto :passed
+        }
+      }
+      die "Test.generate_is.returned_func: how did we get here?"
+
+      # TODO fix text alignment
+      @:passed
+        say "\t#{conjugate_test_like}\t'#{args.dump}'\t\tPASS"
+        self.reasons.append(reason)
+        return reason
+      @:failed
+        say "\t#{conjugate_test_like}\t'#{args.dump}'\t\tFAIL"
+        # self.reasons += reason
+        self.reasons.append(reason)
+        return reason
+    }
+  }
+
+  method _dies (block, regexes = [//, //], *args) {
+    var reason = Hash(:func => __METHOD_NAME__, :called_with => Hash(:block => block, :regexes => regexes, :args => args))
+    try {
+      block.run(args...)
+      reason += Hash(:result => :fail, :caused_by => [block, args], :expl => "no error caught")
+      goto :no_exc
+    } catch {
+      |type, msg|
+      if (type~~regexes[0] && msg~~regexes[1]) {
+        reason += Hash(:result => :pass, :caused_by => [block, args], :expl => "expected error caught")
+        goto :expected_exc;
+      }
+      reason += Hash(:result => :fail, :caused_by => [block, args], :expl => "unexpected error caught")
+      goto :unexpected_exc
+    }
+    die "Test.dies: how did we get here?"
+
+    @:expected_exc
+      say "\tdies:\t\t'#{block.dump[^10]}...':\tPASS"
+      self.reasons.append(reason)
+      return reason
+    @:unexpected_exc
+      say "\tdies:\t\t'#{block.dump[^10]}...':\tFAIL (error mismatch)"
+      self.reasons.append(reason)
+      return reason
+    @:no_exc
+      say "\tdies:\t\t'#{block.dump[^10]}...':\tFAIL (no error)"
+      self.reasons.append(reason)
+      return reason
+  }
+
+  method go (block) {
+    say "  Case '#{self.case_name}'..."
+    block.run(self.generate_is(true), self.generate_is(false), self.method("_dies"))
+    var failures = self.reasons.grep{ _{:reason} == :fail }
+    # say self.reasons
+    var res = (failures ? "FAIL" : "PASS")
+    say "  Case '#{self.case_name}': #{res}"
+    say "    -> #{failures.dump}" if (failures)
+    return self
+  }
+}
+
 class Luciu {
 
+  method go {
+    var test_dir = Dir("tests")
+    var run_tests = []
+
+    for entry in (test_dir.open_r) {
+
+      if ((entry =~ /^([^._].+\.st)$/)[0]) { # tests starting with _ or . are ignored
+        |name|
+        say "Testing #{name}..."
+        var file_contents = (test_dir+File(name)->open_r.slurp)
+        say file_contents
+        var test = eval( file_contents )
+        say ::dump(test)
+        run_tests += test
+        say "Tested #{name}"
+        say "=== SUMMARY"
+        say test.dump
+      }
+    }
+  }
 }
 
 # test-generator based on input / expectation specification
 # this kind of thing is really useless in some contexts, let's see
-class Meter {
+class Meter {}
 
+func main {
+  var l = Luciu()
+  l.go()
+}
+
+if (__FILE__ == __MAIN__) {
+  main()
 }
