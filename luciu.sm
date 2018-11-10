@@ -8,6 +8,7 @@ class Luciu (case_name) {
   has Bool failed
   has Bool passed
   has Bool crashed
+  has Bool empty
   has Pair crash_info
   has Number count_failed = 0
   has Number count_passed = 0
@@ -136,7 +137,7 @@ class Luciu (case_name) {
   }
 
   method go (block) {
-    say "   Case '#{self.case_name}'..."
+    say "   TEST Case '#{self.case_name}'..."
     try {
       block.run(self._generate_is(true), self._generate_is(false), self.method("_dies"), self.method("_lives"))
       self.completed = true
@@ -151,19 +152,30 @@ class Luciu (case_name) {
     var failed = self.reasons.grep{ _{:result} == :fail }
     var passed = self.reasons.grep{ _{:result} == :pass }
 
-    self.failed = !(failed.is_empty)
     self.passed = (failed.is_empty && self.completed)
+    self.failed = (!failed.is_empty)
     self.count_failed = failed.len
     self.count_passed = passed.len
     self.count_exprs = self.reasons.len
 
-    var res = if (self.crashed) {
-      "CRASH!"
-    } else {
-      (passed ? "PASS" : "FAIL")
+    if (0 == self.count_exprs) {
+      self.failed = false
+      self.passed = false
+      self.completed = false
+      self.crashed = false
+      self.empty = true
+      say "   OOPS Case '#{self.case_name}' devoid of test expressions"
     }
 
-    say "   #{res} Case '#{self.case_name}'"
+    var res = if (self.crashed) {
+      "CRASH!"
+    } elsif (self.empty) {
+      "EMPTY!"
+    } else {
+      (passed ? "  PASS" : "  FAIL")
+    }
+
+    say " #{res} Case '#{self.case_name}'"
     if (self.crashed) {
       say "     -> #{self.crash_info.dump}"
     } elsif (failed) {
@@ -184,7 +196,7 @@ func main {
   # very simple for now, no config
   var test_dirs = ARGV.map{ Dir(_) }
   var run_tests = []
-
+  var empty_files = 0
   for dir in (test_dirs) {
     say "Opening '#{dir}'..."
 
@@ -196,9 +208,15 @@ func main {
         var file_contents = (dir+File(name)->open_r.slurp)
         var output
         output = eval( file_contents )
+        if (! output.len) { empty_files++ }
         # try {} catch { |type, msg| type, msg; output = []; say "#{type}: #{msg}" }
         run_tests.append(output)
-        say " Tested '#{dir+name}'."
+        var sum = if (output.any{ .crashed }) { "CRASH!"
+        } elsif (output.all{ .empty }) { "EMPTY!"
+        } elsif (output.any{ .failed }) { "FAIL"
+        } elsif (output.all{ .passed }) { "PASS"
+        } elsif (!output) { "EMPTY!" }
+        say " Tested '#{dir+name}', summary: #{sum}"
       }
     }
 
@@ -214,12 +232,14 @@ func main {
   var failing_files = run_tests.grep{ .all{ .failed } }.len
   var crashing_files = run_tests.grep{ .any{ .crashed } }.len
   var completed_files = run_tests.grep{ .all{ .completed } }.len
+  empty_files += run_tests.grep{ .all{ .empty } }.len
   var total_files = run_tests.len
 
   var passing_cases = run_tests.flatten.grep{ .passed }.len
   var failing_cases = run_tests.flatten.grep{ .failed }.len
   var crashing_cases = run_tests.flatten.grep{ .crashed }.len
   var completed_cases = run_tests.flatten.grep{ .completed }.len
+  var empty_cases = run_tests.flatten.grep{ .empty }.len
   var total_cases = run_tests.flatten.len
 
   var passing_exprs = run_tests.map{ .map{ .count_passed }.sum }.sum
@@ -227,8 +247,8 @@ func main {
   var total_exprs = run_tests.map{ .map{ .count_exprs }.sum }.sum
 
   say "\nSynopsis:"
-  say "\tFiles: Planned: #{total_files} | Completed: #{completed_files} | Passing: #{passing_files} | Failing: #{failing_files} | Crashing: #{crashing_files}"
-  say "\tCases: Planned: #{total_cases} | Completed: #{completed_cases} | Passing: #{passing_cases} | Failing: #{failing_cases} | Crashing: #{crashing_cases}"
+  say "\tFiles: Planned: #{total_files} | Completed: #{completed_files} ( Passing: #{passing_files} | Failing: #{failing_files} ) Crashing: #{crashing_files} | Empty: #{empty_files}"
+  say "\tCases: Planned: #{total_cases} | Completed: #{completed_cases} ( Passing: #{passing_cases} | Failing: #{failing_cases} ) Crashing: #{crashing_cases} | Empty: #{empty_cases}"
   say "\tExprs: Tested: #{total_exprs} | Passing: #{passing_exprs} | Failing: #{failing_exprs}"
 }
 
