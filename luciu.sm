@@ -3,20 +3,27 @@
 # how shiny is your Sidef?
 class Luciu (case_name) {
 
-  has reasons = []
-  has Bool is_completed = false
+  has Array reasons = []
+  has Bool completed = false
   has Bool failed
   has Bool passed
+  has Bool crashed
+  has Pair crash_info
   has Number count_failed = 0
   has Number count_passed = 0
-  has Number count_cases  = 0
+  has Number count_exprs  = 0
+  has _su_fun = Pair({}, [])
+  has _td_fun = Pair({}, [])
 
-  method generate_is (test_like = true) {
+  has data_store # for storing data between su/call/td
+
+  method _generate_is (test_like = true) {
     -> returned_func (*args) {
+      self._su_fun[0](self._su_fun[1]...)
       var reason = Hash(:func => [__FUNC_NAME__, __METHOD_NAME__], :called_with => args.dclone, :test_like => test_like)
-      var conjugate_test_like = (test_like ? "truth:  " : "falsity:")
+      var conjugate_test_like = (test_like ? "equality" : "inequality")
 
-      # no arguments = pass (?)
+      # no arguments = pass (?)haver
       given (args.len) {
         when (0) {
           reason += Hash(:result => :pass, :expl => "empty arguments")
@@ -36,7 +43,7 @@ class Luciu (case_name) {
           args.combinations(2).each {
             var (first, second) = _...
             if (test_like != (first == second)) {
-              var p = (test_like ? "" : "in")
+              var p = (test_like ? "in" : "")
               reason += Hash(:result => :fail, :caused_by => [first, second].dclone, :expl => "found #{p}equal arguments")
               goto :failed
             }
@@ -46,22 +53,23 @@ class Luciu (case_name) {
           goto :passed
         }
       }
-      die "Test.generate_is.returned_func: how did we get here?"
+      die "#{__CLASS_NAME__}.#{__METHOD_NAME__}: how did we get here?"
 
       # TODO fix text alignment
       @:passed
-        say "\t#{conjugate_test_like}\t'#{args.dump}'\t\tPASS"
-        self.reasons.append(reason)
-        return reason
+        say "\tPASS\t#{conjugate_test_like}\t#{args.dump}"
+        goto :end
       @:failed
-        say "\t#{conjugate_test_like}\t'#{args.dump}'\t\tFAIL"
-        # self.reasons += reason
+        say "\tFAIL\t#{conjugate_test_like}\t#{args.dump}"
+      @:end
+        self._td_fun[0](reason, self._td_fun[1]...)
         self.reasons.append(reason)
         return reason
     }
   }
 
   method _dies (block, regexes = [//, //], *args) {
+    self._su_fun[0](self._su_fun[1]...)
     var reason = Hash(:func => __METHOD_NAME__, :called_with => Hash(:block => block, :regexes => regexes, :args => args.dclone))
     try {
       block.run(args...)
@@ -76,39 +84,91 @@ class Luciu (case_name) {
       reason += Hash(:result => :fail, :caused_by => [block, args.dclone], :expl => "unexpected error caught")
       goto :unexpected_exc
     }
-    die "Test.dies: how did we get here?"
+    die "#{__CLASS_NAME__}.#{__METHOD_NAME__}: how did we get here?"
 
     @:expected_exc
-      say "\tdies:\t\t'#{block.dump[^10]}...':\tPASS"
-      self.reasons.append(reason)
-      return reason
+      say "\tPASS\tdies\t\t[native code]"
+      goto :end
     @:unexpected_exc
-      say "\tdies:\t\t'#{block.dump[^10]}...':\tFAIL (error mismatch)"
-      self.reasons.append(reason)
-      return reason
+      say "\tFAIL\tdies\t\t[native code]\n\t\t(error mismatch)"
+      goto :end
     @:no_exc
-      say "\tdies:\t\t'#{block.dump[^10]}...':\tFAIL (nothing caught)"
+      say "\tFAIL\tdies\t\t[native code]\n\t\t(nothing caught)"
+    @:end
+      self._td_fun[0](reason, self._td_fun[1]...)
       self.reasons.append(reason)
       return reason
   }
 
+  method _lives (block, *args) {
+    self._su_fun[0](self._su_fun[1]...)
+    var reason = Hash(:func => __METHOD_NAME__, :called_with => Hash(:block => block, :args => args.dclone))
+    try {
+      block.run(args...)
+      reason += Hash(:result => :pass, :caused_by => [block, args.dclone], :expl => "no error caught")
+      goto :passed
+    } catch {
+      |type, msg|
+      reason += Hash(:result => :fail, :caused_by => [block, args.dclone], :expl => "error caught", :type => type, :msg => msg)
+      goto :failed
+    }
+    die "#{__CLASS_NAME__}.#{__METHOD_NAME__}: how did we get here?"
+
+    @:passed
+      say "\tPASS\tlives\t\t[native code]"
+      goto :end
+    @:unexpected_exc
+      say "\tFAIL\tlives\t\t[native code]"
+    @:end
+      self._td_fun[0](reason, self._td_fun[1]...)
+      self.reasons.append(reason)
+      return reason
+  }
+
+  method setup (block, *args) {
+    self._su_fun = Pair(block, args)
+    self
+  }
+
+  method teardown (block, reason, *args) {
+    self._td_fun = Pair(block, reason+args)
+    self
+  }
+
   method go (block) {
-    say "  Case '#{self.case_name}'..."
-    block.run(self.generate_is(true), self.generate_is(false), self.method("_dies"))
+    say "   Case '#{self.case_name}'..."
+    try {
+      block.run(self._generate_is(true), self._generate_is(false), self.method("_dies"), self.method("_lives"))
+      self.completed = true
+      self.crashed = false
+    } catch {
+      |type, msg|
+      # say "#{type}: #{msg}"
+      self.crashed = true
+      self.completed = false
+      self.crash_info = Pair(type, msg)
+    }
     var failed = self.reasons.grep{ _{:result} == :fail }
     var passed = self.reasons.grep{ _{:result} == :pass }
 
-    self.is_completed = true
-    self.failed = Bool(failed)
-    self.passed = !Bool(failed)
+    self.failed = !(failed.is_empty)
+    self.passed = (failed.is_empty && self.completed)
     self.count_failed = failed.len
     self.count_passed = passed.len
-    self.count_cases = self.reasons.len
+    self.count_exprs = self.reasons.len
 
-    var res = (failed ? "FAIL" : "PASS")
+    var res = if (self.crashed) {
+      "CRASH!"
+    } else {
+      (passed ? "PASS" : "FAIL")
+    }
 
-    say "  Case '#{self.case_name}': #{res}"
-    say "    failures -> #{failed.dump}" if (failed)
+    say "   #{res} Case '#{self.case_name}'"
+    if (self.crashed) {
+      say "     -> #{self.crash_info.dump}"
+    } elsif (failed) {
+      say "      #{self.count_failed} -> #{failed.dump}"
+    }
 
     self
   }
@@ -121,31 +181,55 @@ class Test < Luciu {}
 class Meter {}
 
 func main {
-  var test_dir = Dir("tests")
+  # very simple for now, no config
+  var test_dirs = ARGV.map{ Dir(_) }
   var run_tests = []
 
-  for entry in (test_dir.open_r) {
+  for dir in (test_dirs) {
+    say "Opening '#{dir}'..."
 
-    if ((entry =~ /^([^._].+\.st)$/)[0]) { # tests starting with _ or . are ignored
-      |name|
-      say "Testing cases in #{test_dir+name}..."
-      var file_contents = (test_dir+File(name)->open_r.slurp)
-      var output = eval( file_contents )
-      run_tests.append(output)
-      say "Tested #{name}"
+    for entry in (dir.open_r) {
+
+      if ((entry =~ /^([^._].+\.st)$/)[0]) { # tests starting with _ or . are ignored
+        |name|
+        say " Testing cases in '#{dir+name}'..."
+        var file_contents = (dir+File(name)->open_r.slurp)
+        var output
+        output = eval( file_contents )
+        # try {} catch { |type, msg| type, msg; output = []; say "#{type}: #{msg}" }
+        run_tests.append(output)
+        say " Tested '#{dir+name}'."
+      }
     }
+
+    say "Finished '#{dir}'."
   }
+  ## run_tests is Array<Array<Test>>
+  # the first level is files
+  # then cases
+  # then exprs
   # say run_tests
-  # this might be undone in the future, in which case we need to sum per-case / per-file
-  run_tests.flatten!
-  var passing_files = run_tests.grep{ .passed }.len
-  var failing_files = run_tests.grep{ .failed }.len
-  var passing_cases = run_tests.map{ .count_passed }.sum
-  var failing_cases = run_tests.map{ .count_failed }.sum
-  var total_cases = run_tests.map{ .count_cases }.sum
+
+  var passing_files = run_tests.grep{ .all{ .passed } }.len
+  var failing_files = run_tests.grep{ .all{ .failed } }.len
+  var crashing_files = run_tests.grep{ .any{ .crashed } }.len
+  var completed_files = run_tests.grep{ .all{ .completed } }.len
+  var total_files = run_tests.len
+
+  var passing_cases = run_tests.flatten.grep{ .passed }.len
+  var failing_cases = run_tests.flatten.grep{ .failed }.len
+  var crashing_cases = run_tests.flatten.grep{ .crashed }.len
+  var completed_cases = run_tests.flatten.grep{ .completed }.len
+  var total_cases = run_tests.flatten.len
+
+  var passing_exprs = run_tests.map{ .map{ .count_passed }.sum }.sum
+  var failing_exprs = run_tests.map{ .map{ .count_failed }.sum }.sum
+  var total_exprs = run_tests.map{ .map{ .count_exprs }.sum }.sum
+
   say "\nSynopsis:"
-  say "\tFiles: Tested: #{run_tests.len} | Passing: #{passing_files} | Failing: #{failing_files}"
-  say "\tCases: Tested: #{total_cases} | Passing: #{passing_cases} | Failing: #{failing_cases}"
+  say "\tFiles: Planned: #{total_files} | Completed: #{completed_files} | Passing: #{passing_files} | Failing: #{failing_files} | Crashing: #{crashing_files}"
+  say "\tCases: Planned: #{total_cases} | Completed: #{completed_cases} | Passing: #{passing_cases} | Failing: #{failing_cases} | Crashing: #{crashing_cases}"
+  say "\tExprs: Tested: #{total_exprs} | Passing: #{passing_exprs} | Failing: #{failing_exprs}"
 }
 
 if (__FILE__ == __MAIN__) {
