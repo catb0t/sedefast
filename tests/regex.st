@@ -1,14 +1,12 @@
-#! ruby
-# include luciu
-
 [
-  #`(luciu::)Test("strings").go({
-    |is, isnt, dies|
-    is(("a" =~ /(a)/)[0], "a")
 
-    isnt(false) # should pass
+Luciu.new("strings").go{
+  |is, isnt, dies|
+  is(("a" =~ /(a)/)[0], "a")
 
-    dies({ die "this should die" })
-  })
+  isnt(false) # should pass
+
+  dies({ die "this should die" }, regexes: [/error/, /should/])
+}
 
 ]
