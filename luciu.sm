@@ -203,14 +203,17 @@ func main {
     for entry in (dir.open_r) {
 
       if ((entry =~ /^([^._].+\.st)$/)[0]) { # tests starting with _ or . are ignored
+        # try {} catch { |type, msg| type, msg; output = []; say "#{type}: #{msg}" }
         |name|
         say " Testing cases in '#{dir+name}'..."
         var file_contents = (dir+File(name)->open_r.slurp)
         var output
+
         output = eval( file_contents )
-        if (! output.len) { empty_files++ }
-        # try {} catch { |type, msg| type, msg; output = []; say "#{type}: #{msg}" }
+        if (defined(output) && !output.len) { empty_files++ }
+        elsif (!file_contents) { empty_files++; output = [] }
         run_tests.append(output)
+
         var sum = if (output.any{ .crashed }) { "CRASH!"
         } elsif (output.all{ .empty }) { "EMPTY!"
         } elsif (output.any{ .failed }) { "FAIL"
