@@ -1,6 +1,15 @@
 #! sidef -WkP12
+#`(exit the shell) {
+  eval 'exec sidef $0 ${1+"$@"}'
+}
 
-# how shiny is your Sidef?
+##  Luciu, mini test framework for Sidef
+##    Copyright Cat Stevens 2018
+##  You should have recieved a copy of either the
+##    Artistic Licesne 2.0 or GPLv3 with this program;
+##    if not, see <https://github.com/catb0t/sedefactor>
+
+# how glossy is your Sidef?
 class Luciu (case_name) {
 
   has Array reasons = []
@@ -24,7 +33,7 @@ class Luciu (case_name) {
       var reason = Hash(:func => [__FUNC_NAME__, __METHOD_NAME__], :called_with => args.dclone, :test_like => test_like)
       var conjugate_test_like = (test_like ? "equality" : "inequality")
 
-      # no arguments = pass (?)haver
+      # no arguments = pass (?)
       given (args.len) {
         when (0) {
           reason += Hash(:result => :pass, :expl => "empty arguments")
@@ -195,6 +204,8 @@ class Meter {}
 
 # make this function into an API
 func main {
+  say "How glossy is your Sidef?\n"
+
   # very simple for now, no config
   var test_dirs = ARGV.map{ Dir(_) }
   var run_tests = []
@@ -256,6 +267,8 @@ func main {
   say "\tFiles: Planned: #{total_files} | Completed: #{completed_files} ( Passing: #{passing_files} | Failing: #{failing_files} ) Crashing: #{crashing_files} | Empty: #{empty_files}"
   say "\tCases: Planned: #{total_cases} | Completed: #{completed_cases} ( Passing: #{passing_cases} | Failing: #{failing_cases} ) Crashing: #{crashing_cases} | Empty: #{empty_cases}"
   say "\tExprs: Tested: #{total_exprs} | Passing: #{passing_exprs} | Failing: #{failing_exprs}"
+
+  say "\nFound jewel-quality Sidef." if (total_files == passing_files )
 }
 
 if (__FILE__ == __MAIN__) {

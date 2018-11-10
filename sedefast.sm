@@ -1,4 +1,7 @@
 #! sidef -WkP12
+#`(exit the shell) {
+  eval 'exec sidef $0 ${1+"$@"}'
+}
 
 func main () {
   var tokens = ARGF.slurp.split(/\s/).grep{ _ } # no string literals yet
