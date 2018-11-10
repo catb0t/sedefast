@@ -9,10 +9,10 @@ class Luciu (case_name) {
   has Bool passed
   has Bool crashed
   has Bool empty
-  has Pair crash_info
   has Number count_failed = 0
   has Number count_passed = 0
   has Number count_exprs  = 0
+  has Pair crash_info
   has _su_fun = Pair({}, [])
   has _td_fun = Pair({}, [])
 
@@ -139,23 +139,24 @@ class Luciu (case_name) {
   method go (block) {
     say "   TEST Case '#{self.case_name}'..."
     try {
-      block.run(self._generate_is(true), self._generate_is(false), self.method("_dies"), self.method("_lives"))
+      block.run(self._generate_is(true), self._generate_is(false), self.method("_dies"), self.method("_lives"), self)
       self.completed = true
       self.crashed = false
     } catch {
+      # maybe warnings shouldn't be crashes??
       |type, msg|
       # say "#{type}: #{msg}"
       self.crashed = true
       self.completed = false
       self.crash_info = Pair(type, msg)
     }
-    var failed = self.reasons.grep{ _{:result} == :fail }
-    var passed = self.reasons.grep{ _{:result} == :pass }
+    var failed_list = self.reasons.grep{ _{:result} == :fail }
+    var passed_list = self.reasons.grep{ _{:result} == :pass }
 
-    self.passed = (failed.is_empty && self.completed)
-    self.failed = (!failed.is_empty)
-    self.count_failed = failed.len
-    self.count_passed = passed.len
+    self.passed = (self.reasons.all{ _{:result} == :pass } && self.completed)
+    self.failed = !failed_list.is_empty
+    self.count_failed = failed_list.len
+    self.count_passed = passed_list.len
     self.count_exprs = self.reasons.len
 
     if (0 == self.count_exprs) {
@@ -172,14 +173,14 @@ class Luciu (case_name) {
     } elsif (self.empty) {
       "EMPTY!"
     } else {
-      (passed ? "  PASS" : "  FAIL")
+      (self.passed ? "  PASS" : "  FAIL")
     }
 
     say " #{res} Case '#{self.case_name}'"
     if (self.crashed) {
-      say "     -> #{self.crash_info.dump}"
-    } elsif (failed) {
-      say "      #{self.count_failed} -> #{failed.dump}"
+      say "     crash -> #{self.crash_info.dump}"
+    } elsif (failed_list) {
+      say "      #{self.count_failed} failure -> #{failed_list.dump}"
     }
 
     self
@@ -192,6 +193,7 @@ class Test < Luciu {}
 # this kind of thing is really useless in some contexts, let's see
 class Meter {}
 
+# make this function into an API
 func main {
   # very simple for now, no config
   var test_dirs = ARGV.map{ Dir(_) }
@@ -211,11 +213,11 @@ func main {
 
         output = eval( file_contents )
         if (defined(output) && !output.len) { empty_files++ }
-        elsif (!file_contents) { empty_files++; output = [] }
+        elsif ((!defined(output)) && (!file_contents)) { empty_files++; output = [] }
         run_tests.append(output)
 
         var sum = if (output.any{ .crashed }) { "CRASH!"
-        } elsif (output.all{ .empty }) { "EMPTY!"
+        } elsif (output.any{ .empty }) { "EMPTY!"
         } elsif (output.any{ .failed }) { "FAIL"
         } elsif (output.all{ .passed }) { "PASS"
         } elsif (!output) { "EMPTY!" }
@@ -235,15 +237,16 @@ func main {
   var failing_files = run_tests.grep{ .all{ .failed } }.len
   var crashing_files = run_tests.grep{ .any{ .crashed } }.len
   var completed_files = run_tests.grep{ .all{ .completed } }.len
-  empty_files += run_tests.grep{ .all{ .empty } }.len
+  empty_files         += run_tests.grep{ .all{ .empty } }.len
   var total_files = run_tests.len
 
-  var passing_cases = run_tests.flatten.grep{ .passed }.len
-  var failing_cases = run_tests.flatten.grep{ .failed }.len
-  var crashing_cases = run_tests.flatten.grep{ .crashed }.len
-  var completed_cases = run_tests.flatten.grep{ .completed }.len
-  var empty_cases = run_tests.flatten.grep{ .empty }.len
-  var total_cases = run_tests.flatten.len
+  var rf = run_tests.flatten
+  var passing_cases = rf.grep{ .passed }.len
+  var failing_cases = rf.grep{ .failed }.len
+  var crashing_cases = rf.grep{ .crashed }.len
+  var completed_cases = rf.grep{ .completed }.len
+  var empty_cases = rf.grep{ .empty }.len
+  var total_cases = rf.len
 
   var passing_exprs = run_tests.map{ .map{ .count_passed }.sum }.sum
   var failing_exprs = run_tests.map{ .map{ .count_failed }.sum }.sum

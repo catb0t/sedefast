@@ -1,7 +1,5 @@
 [
 
-Luciu("empty").go{}
-
 Luciu("luciu").go{
   |is, isnt, dies, lives|
 
@@ -9,13 +7,13 @@ Luciu("luciu").go{
   is([1, 2, 3], [1, 2, 3])
   is(true)
   is()
-  is(1, 2, 1) # fails
-  die "died"
-
+  is(1, 1, 1) # fails
+  #die "dies"
 
   isnt(("a" =~ /a/)[0], "a")
   isnt(false)      # like assert_ne
   isnt([1, 2, 3], [1, 2])
+  isnt(1, 2, 3, 4) # different
   isnt(1, 2, 3, 4) # all different
 
   dies({ die "this should die" }, regexes: [/error/, /should/])
