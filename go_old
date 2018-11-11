@@ -1,0 +1,48 @@
+
+
+method :(block) {
+    self.completed = true
+    self.crashed = false
+  } catch {
+    # maybe warnings shouldn't be crashes??
+    |type, msg|
+    # say "#{type}: #{msg}"
+    self.crashed = true
+    self.completed = false
+    self.crash_info = Pair(type, msg)
+  }
+  var failed_list = self.reasons.grep{ _{:result} == :fail }
+  var passed_list = self.reasons.grep{ _{:result} == :pass }
+
+  self.passed = (self.reasons.all{ _{:result} == :pass } && self.completed)
+  self.failed = !failed_list.is_empty
+  self.count_failed = failed_list.len
+  self.count_passed = passed_list.len
+  self.count_exprs = self.reasons.len
+
+  if (0 == self.count_exprs) {
+    self.failed = false
+    self.passed = false
+    self.completed = false
+    self.crashed = false
+    self.empty = true
+    say "   OOPS Case '#{self.case_name}' devoid of test expressions"
+  }
+
+  var res = if (self.crashed) {
+    "CRASH!"
+  } elsif (self.empty) {
+    "EMPTY!"
+  } else {
+    (self.passed ? "  PASS" : "  FAIL")
+  }
+
+  say " #{res} Case '#{self.case_name}'"
+  if (self.crashed) {
+    say "     crash -> #{self.crash_info.dump}"
+  } elsif (failed_list) {
+    say "      #{self.count_failed} failure -> #{failed_list.dump}"
+  }
+
+  self
+}

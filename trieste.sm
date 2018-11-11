@@ -1,0 +1,19 @@
+#! sidef -WkP4
+#`(exit the shell) {
+  eval 'exec sidef -Wk $0 ${1+"$@"}'
+}
+
+##  Trieste, dead simple dependency management for Sidef
+##    Copyright Cat Stevens 2018
+##  You should have recieved a copy of either the
+##    Artistic License 2.0 or GPLv3 with this program;
+##    if not, see <https://github.com/catb0t/sedefactor>
+
+func trieste_main {
+  # no argument parsing for now
+
+}
+
+if (__FILE__ == __MAIN__) {
+  trieste_main()
+}

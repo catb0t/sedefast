@@ -1,6 +1,14 @@
-#! sidef -WkP12
+#! sidef -Wk
 
 # description
 class Opis {
 
 }
+
+class Test(n) {
+    method :(k) {
+        n+k
+    }
+}
+
+say Test(3):4		#=> 7

@@ -17,6 +17,7 @@ func main () {
       }
 
       var code = "#{stack.pop}.method('#{tok}')"
+      # die is not recognised as the name of an internal or external command, operable program, or batch file. 
       var (successful_result, pop_n)
 
       for inputs_count in ((-stack.last_index) .. 0) {

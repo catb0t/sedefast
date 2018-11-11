@@ -1,52 +1,103 @@
-#! sidef -WkP12
+#! sidef -Wk
 #`(exit the shell) {
-  eval 'exec sidef $0 ${1+"$@"}'
+  eval 'exec sidef -Wk $0 ${1+"$@"}'
 }
 
 ##  Luciu, mini test framework for Sidef
 ##    Copyright Cat Stevens 2018
 ##  You should have recieved a copy of either the
-##    Artistic Licesne 2.0 or GPLv3 with this program;
+##    Artistic License 2.0 or GPLv3 with this program;
 ##    if not, see <https://github.com/catb0t/sedefactor>
+
+subset State < String { %w(completed crashed passed).contains(_) }
+subset Result < String { %w(failed passed skipped).contains(_) }
+subset ExpressionResult < String { %w(fail pass).contains(_) }
+module Expression { define FAIL = :fail; define PASS = :pass }
+
+class Reason {
+  has String _func_name
+  has Hash _called_with
+  has Hash _special_parameters
+
+  has ExpressionResult _result
+  has String _explain
+  has Object _caused_by
+
+  has Bool _lck
+
+  -> lock   { self._lck = true;  nil }
+  -> unlock { self._lck = false; nil }
+
+  -> func_name () is cached -> String { self._func_name }
+  -> func_name (String fn)  -> Reason { if (!self._lck) { self._func_name = fn } self }
+
+  -> called_with () is cached -> Hash { self._called_with }
+  -> called_with (Hash cw)    -> Reason { if (!self._lck) { self._called_with = cw } self }
+
+  -> special_parameters () is cached -> Hash { self._special_parameters }
+  -> special_parameters (Hash sp)    -> Reason { if (!self._lck) { self._special_parameters = sp } self }
+
+  -> result () is cached -> String { self._result }
+  -> result (er < ExpressionResult) -> Reason { if (!self._lck) { self._result = er } self }
+
+  -> explain () is cached -> String { self._explain }
+  -> explain (String ex)  -> Reason { if (!self._lck) { self._explain = ex } self }
+
+  -> caused_by () is cached -> Object { self._caused_by }
+  -> caused_by (Object cb)  -> Reason { if (!self._lck) { self._caused_by = cb } self }
+}
 
 # how glossy is your Sidef?
 class Luciu (case_name) {
 
   has Array reasons = []
-  has Bool completed = false
-  has Bool failed
-  has Bool passed
-  has Bool crashed
-  has Bool empty
-  has Number count_failed = 0
-  has Number count_passed = 0
-  has Number count_exprs  = 0
+  has State  _state
+  has Result _result
+  -> state (s < State)   -> Luciu { self._state = s; self }
+  -> result (r < Result) -> Luciu { self._result = r; self }
+  -> state { self._state }
+  -> result { self._result }
+
+  has Number failed_exprs = 0
+  has Number passed_exprs = 0
+  has Number ran_exprs    = 0
   has Pair crash_info
   has _su_fun = Pair({}, [])
   has _td_fun = Pair({}, [])
+  -> setup    (b, *a) { self._su_fun = Pair(b, a); self }
+  -> teardown (b, *a) { self._td_fun = Pair(b, a); self }
+
+  has Bool _skip_on_crash
+  -> skip_crash { self._skip_on_crash = true; self }
+  has Bool _skip_called
+  -> skip_called () -> Luciu { self._skip_called = true; self }
 
   has data_store # for storing data between su/call/td
 
   method _generate_is (test_like = true) {
     -> returned_func (*args) {
       self._su_fun[0](self._su_fun[1]...)
-      var reason = Hash(:func => [__FUNC_NAME__, __METHOD_NAME__], :called_with => args.dclone, :test_like => test_like)
+      var reason = Reason() \
+        .func_name(__METHOD_NAME__) \
+        .called_with( :(:args => args) ) \
+        .special_parameters( :(:test_like => test_like) )
+
       var conjugate_test_like = (test_like ? "equality" : "inequality")
 
       # no arguments = pass (?)
       given (args.len) {
         when (0) {
-          reason += Hash(:result => :pass, :expl => "empty arguments")
-          goto :passed
+          reason.result(Expression::PASS).explain("empty arguments").lock
+          goto reason.result
         }
         when (1) {
-          reason += Hash(:caused_by => args[0].dclone, :expl => "#{test_like} expression")
+          reason.caused_by(args[0]).explain("#{test_like} expression")
           if (test_like == Bool(args[0])) {
-            reason += Hash(:result => :pass)
-            goto :passed
+            reason.result(Expression::PASS).lock
+            goto reason.result
           } else {
-            reason += Hash(:result => :pass)
-            goto :failed
+            reason.result(Expression::FAIL).lock
+            goto reason.result
           }
         }
         default {
@@ -54,22 +105,22 @@ class Luciu (case_name) {
             var (first, second) = _...
             if (test_like != (first == second)) {
               var p = (test_like ? "in" : "")
-              reason += Hash(:result => :fail, :caused_by => [first, second].dclone, :expl => "found #{p}equal arguments")
-              goto :failed
+              reason.result(Expression::FAIL).caused_by([first, second]).explain("found #{p}equal arguments").lock
+              goto reason.result
             }
           }
           var p = (test_like ? "" : "in")
-          reason += Hash(:result => :pass, :caused_by => args.dclone, :expl => "all #{p}equal arguments")
-          goto :passed
+          reason.result(Expression::PASS).caused_by(args).explain("all #{p}equal arguments").lock
+          goto reason.result
         }
       }
       die "#{__CLASS_NAME__}.#{__METHOD_NAME__}: how did we get here?"
 
       # TODO fix text alignment
-      @:passed
+      @:pass
         say "\tPASS\t#{conjugate_test_like}\t#{args.dump}"
         goto :end
-      @:failed
+      @:fail
         say "\tFAIL\t#{conjugate_test_like}\t#{args.dump}"
       @:end
         self._td_fun[0](reason, self._td_fun[1]...)
@@ -80,18 +131,21 @@ class Luciu (case_name) {
 
   method _dies (block, regexes = [//, //], *args) {
     self._su_fun[0](self._su_fun[1]...)
-    var reason = Hash(:func => __METHOD_NAME__, :called_with => Hash(:block => block, :regexes => regexes, :args => args.dclone))
+    var reason = Reason() \
+      .func_name(__METHOD_NAME__) \
+      .called_with( :(:block => block, :regexes => regexes, :args => args) )
+
     try {
       block.run(args...)
-      reason += Hash(:result => :fail, :caused_by => [block, args.dclone], :expl => "no error caught")
+      reason.result(Expression::FAIL).caused_by([block, args]).explain("no error caught").lock
       goto :no_exc
     } catch {
       |type, msg|
       if (type~~regexes[0] && msg~~regexes[1]) {
-        reason += Hash(:result => :pass, :caused_by => [block, args.dclone], :expl => "expected error caught")
-        goto :expected_exc;
+        reason.result(Expression::PASS).caused_by([block, args]).explain("expected error caught").lock
+        goto :expected_exc
       }
-      reason += Hash(:result => :fail, :caused_by => [block, args.dclone], :expl => "unexpected error caught")
+      reason.result(Expression::FAIL).caused_by([block, args]).explain("unexpected error caught").lock
       goto :unexpected_exc
     }
     die "#{__CLASS_NAME__}.#{__METHOD_NAME__}: how did we get here?"
@@ -112,22 +166,26 @@ class Luciu (case_name) {
 
   method _lives (block, *args) {
     self._su_fun[0](self._su_fun[1]...)
-    var reason = Hash(:func => __METHOD_NAME__, :called_with => Hash(:block => block, :args => args.dclone))
+    var reason = Reason() \
+      .func_name(__METHOD_NAME__) \
+      .called_with( :(:block => block, :args => args) )
+
     try {
       block.run(args...)
-      reason += Hash(:result => :pass, :caused_by => [block, args.dclone], :expl => "no error caught")
-      goto :passed
+      reason.result(Expression::PASS).caused_by([block, args]).explain("no error caught").lock
+      goto reason.result
     } catch {
       |type, msg|
-      reason += Hash(:result => :fail, :caused_by => [block, args.dclone], :expl => "error caught", :type => type, :msg => msg)
-      goto :failed
+      reason.result(Expression::FAIL).caused_by([block, args, type, msg]).explain("error caught") \
+        .special_parameters( Hash(:type => type, :msg => msg) ).lock
+      goto reason.result
     }
     die "#{__CLASS_NAME__}.#{__METHOD_NAME__}: how did we get here?"
 
-    @:passed
+    @:pass
       say "\tPASS\tlives\t\t[native code]"
       goto :end
-    @:unexpected_exc
+    @:fail
       say "\tFAIL\tlives\t\t[native code]"
     @:end
       self._td_fun[0](reason, self._td_fun[1]...)
@@ -135,68 +193,119 @@ class Luciu (case_name) {
       return reason
   }
 
-  method setup (block, *args) {
-    self._su_fun = Pair(block, args)
-    self
+  method _skip (*args) {
+    args
+    # ???
   }
 
-  method teardown (block, reason, *args) {
-    self._td_fun = Pair(block, reason+args)
-    self
+  method summary {
+    var pad = 7
+    if (self._state != :completed) {
+      var text = if (self._state == :crashed) {
+        Pair("CRASH", "uncaught die / assert / warn")
+      } else {
+        Pair("EMPTY", "devoid of expressions (without calling skip())")
+      }
+      ("%*s %s\n").printf(pad, text)
+    }
+    ("%*s Case '%s'\n").printf(pad, String(self._result[^4]).uc, self.case_name)
+    if (self._result == :failed) {
+      ("%*s failed -> %s\n").printf(pad, self.failed_exprs.len, self.failed_exprs.dump)
+    } elsif (self._state == :crashed) {
+      ("%*s crash -> %s\n").printf(pad, "", self.crash_info.dump)
+    }
+    say()
   }
 
-  method go (block) {
+  method :(block) {
     say "   TEST Case '#{self.case_name}'..."
+    var (State prelim_state, Result prelim_result)
     try {
-      block.run(self._generate_is(true), self._generate_is(false), self.method("_dies"), self.method("_lives"), self)
-      self.completed = true
-      self.crashed = false
+      block.run(
+        self._generate_is(true),
+        self._generate_is(false),
+        self.method("_dies"),
+        self.method("_lives"),
+        self.method("_skip"),
+        self
+      )
+      prelim_state = (self.reasons.len ? :completed : :empty)
+
+      prelim_result = if (self._skip_called) {
+        :skipped
+      } elsif (!self._skip_called && prelim_state==:empty) { #
+        :failed
+      } else {
+        :passed
+      }
+
     } catch {
-      # maybe warnings shouldn't be crashes??
-      |type, msg|
-      # say "#{type}: #{msg}"
-      self.crashed = true
-      self.completed = false
+        |type, msg|
+      # TODO: allow configuration of whether warn() is recorded as a crash
+      say "!!! Luciu caught '#{type}' '#{msg}'"
+      prelim_state = :crashed
+      prelim_result = (self._skip_on_crash ? :skipped : :failed)
       self.crash_info = Pair(type, msg)
-    }
-    var failed_list = self.reasons.grep{ _{:result} == :fail }
-    var passed_list = self.reasons.grep{ _{:result} == :pass }
-
-    self.passed = (self.reasons.all{ _{:result} == :pass } && self.completed)
-    self.failed = !failed_list.is_empty
-    self.count_failed = failed_list.len
-    self.count_passed = passed_list.len
-    self.count_exprs = self.reasons.len
-
-    if (0 == self.count_exprs) {
-      self.failed = false
-      self.passed = false
-      self.completed = false
-      self.crashed = false
-      self.empty = true
-      say "   OOPS Case '#{self.case_name}' devoid of test expressions"
+      # 'reason' is nil here
+      # teardown_function can check that and become a crash handler
+      self._td_fun[0](nil, self._td_fun[1]...)
     }
 
-    var res = if (self.crashed) {
-      "CRASH!"
-    } elsif (self.empty) {
-      "EMPTY!"
-    } else {
-      (self.passed ? "  PASS" : "  FAIL")
+    -> result_fight (a < Result, b < Result) { # combine results to find the winner
+      # prelim_result = failed when the case is empty without skip, or on unskipped crash
+      # prelim_result = failed wins in every comparison against a later value
+      # similarly, prelim_result = skipped is a hard fact and shouldn't be overridden
+      if ( %w(failed skipped).contains(a) ) { a }
+      # otherwise b wins, since prelim_result can't say for sure if it really passed
+      elsif (a==:passed && b!=:passed) { b }
+      elsif ( [a, b] == %w(passed passed) ) { :passed }
+      else { die "result_fight missing case for: prelim=#{a}, later=#{b}" }
     }
 
-    say " #{res} Case '#{self.case_name}'"
-    if (self.crashed) {
-      say "     crash -> #{self.crash_info.dump}"
-    } elsif (failed_list) {
-      say "      #{self.count_failed} failure -> #{failed_list.dump}"
+    var (
+      passed_reasons = self.reasons.grep{ .result == Expression::PASS },
+      failed_reasons = self.reasons.grep{ .result == Expression::FAIL }
+    )
+
+    var later_result = if (failed_reasons.len) {
+      :failed
+    } elsif (!failed_reasons.len && passed_reasons==self.reasons) {
+      :passed
     }
 
-    self
+    self.state(prelim_state)
+    self.result( result_fight(prelim_result, later_result) )
+
+    self.failed_exprs = failed_reasons
+    self.passed_exprs = passed_reasons
+    self.ran_exprs    = self.reasons
+
+    self.summary
+
+    self # most important line, without this there is no Luciu
   }
 }
 
-class Test < Luciu {}
+class Case < Luciu {}
+
+func do_group (String code) {
+  __FUNC__(eval(code))
+}
+
+func do_group (Array group) {
+  group
+
+  # output = eval( file_contents )
+  # if (defined(output) && !output.len) { empty_files++ }
+  # elsif ((!defined(output)) && (!file_contents)) { empty_files++; output = [] }
+  # run_tests.append(output)
+#
+  # var sum = if (output.any{ .crashed }) { "CRASH!"
+  # } elsif (output.any{ .empty }) { "EMPTY!"
+  # } elsif (output.any{ .failed }) { "FAIL"
+  # } elsif (output.all{ .passed }) { "PASS"
+  # } elsif (!output) { "EMPTY!" }
+}
 
 # test-generator based on input / expectation specification
 # this kind of thing is really useless in some contexts, let's see
@@ -208,8 +317,8 @@ func main {
 
   # very simple for now, no config
   var test_dirs = ARGV.map{ Dir(_) }
-  var run_tests = []
-  var empty_files = 0
+  var run_groups = []
+  var empty_filenames = []
   for dir in (test_dirs) {
     say "Opening '#{dir}'..."
 
@@ -217,58 +326,82 @@ func main {
 
       if ((entry =~ /^([^._].+\.st)$/)[0]) { # tests starting with _ or . are ignored
         # try {} catch { |type, msg| type, msg; output = []; say "#{type}: #{msg}" }
-        |name|
+          |name|
         say " Testing cases in '#{dir+name}'..."
         var file_contents = (dir+File(name)->open_r.slurp)
-        var output
-
-        output = eval( file_contents )
-        if (defined(output) && !output.len) { empty_files++ }
-        elsif ((!defined(output)) && (!file_contents)) { empty_files++; output = [] }
-        run_tests.append(output)
-
-        var sum = if (output.any{ .crashed }) { "CRASH!"
-        } elsif (output.any{ .empty }) { "EMPTY!"
-        } elsif (output.any{ .failed }) { "FAIL"
-        } elsif (output.all{ .passed }) { "PASS"
-        } elsif (!output) { "EMPTY!" }
-        say " Tested '#{dir+name}', summary: #{sum}"
+        var res = do_group(file_contents)
+        # need to properly handle Empty+Passed (file has empty [])
+        # and Empty+Skipped (file has no [], which causes res==nil)
+        # Empty+Failed is only valid for cases and handled in Luciu
+        if (! defined(res)) { empty_filenames += dir+File(name) }
+        else { run_groups.append(res) }
+        say " Tested '#{dir+name}'"
       }
     }
 
     say "Finished '#{dir}'."
   }
+
   ## run_tests is Array<Array<Test>>
-  # the first level is files
+  # the first level is files / groups
   # then cases
   # then exprs
-  # say run_tests
+  # say run_groups
 
-  var passing_files = run_tests.grep{ .all{ .passed } }.len
-  var failing_files = run_tests.grep{ .all{ .failed } }.len
-  var crashing_files = run_tests.grep{ .any{ .crashed } }.len
-  var completed_files = run_tests.grep{ .all{ .completed } }.len
-  empty_files         += run_tests.grep{ .all{ .empty } }.len
-  var total_files = run_tests.len
+  var (
+    total_groups = run_groups.len,
+    passing_groups = Set(run_groups.grep{ .all{ .result == :passed } }...),
+    failing_groups = Set(run_groups.grep{ .any{ .result == :failed } }...), # note the any
+    skipping_groups = Set(run_groups.grep{ .all{ .result == :skipped } }...),
 
-  var rf = run_tests.flatten
-  var passing_cases = rf.grep{ .passed }.len
-  var failing_cases = rf.grep{ .failed }.len
-  var crashing_cases = rf.grep{ .crashed }.len
-  var completed_cases = rf.grep{ .completed }.len
-  var empty_cases = rf.grep{ .empty }.len
-  var total_cases = rf.len
+    completed_groups = Set(run_groups.grep{ .all{ .state == :completed } }...),
+    crashed_groups = Set(run_groups.grep{ .any{ .state == :crashed } }...), # note the any
+    empty_groups = run_groups.grep{ .len == 0 }, # TODO
 
-  var passing_exprs = run_tests.map{ .map{ .count_passed }.sum }.sum
-  var failing_exprs = run_tests.map{ .map{ .count_failed }.sum }.sum
-  var total_exprs = run_tests.map{ .map{ .count_exprs }.sum }.sum
+    cases = run_groups.map{ _... },
+    total_cases = cases.len,
+    passing_cases = Set(cases.grep{ .result == :passed }...),
+    failing_cases = Set(cases.grep{ .result == :failed }...),
+    skipping_cases = Set(cases.grep{ .result == :skipped }...),
 
-  say "\nSynopsis:"
-  say "\tFiles: Planned: #{total_files} | Completed: #{completed_files} ( Passing: #{passing_files} | Failing: #{failing_files} ) Crashing: #{crashing_files} | Empty: #{empty_files}"
-  say "\tCases: Planned: #{total_cases} | Completed: #{completed_cases} ( Passing: #{passing_cases} | Failing: #{failing_cases} ) Crashing: #{crashing_cases} | Empty: #{empty_cases}"
-  say "\tExprs: Tested: #{total_exprs} | Passing: #{passing_exprs} | Failing: #{failing_exprs}"
+    completed_cases = Set(cases.grep{ .state == :completed }...),
+    crashed_cases = Set(cases.grep{ .result == :crashed }...),
+    empty_cases = Set(cases.grep{ .state == :empty }...),
 
-  say "\nFound jewel-quality Sidef." if (total_files == passing_files )
+    # exprs = cases.map{ _.reasons }
+    total_exprs = cases.map{ .ran_exprs.len }.sum,
+    failing_exprs = cases.map{ .failed_exprs }.sum,
+    passing_exprs = cases.map{ .passed_exprs }.sum,
+  )
+
+  func t (Array a) {
+    var b = a.map{.to_a.grep{_}.len}
+    "#{b[0]} #{b[1]} #{b[2]}"
+  }
+
+  var (
+    failing_completed = [failing_groups & completed_groups, failing_cases & completed_cases, failing_exprs],
+    failing_crashed   = [failing_groups & crashed_groups, failing_cases & crashed_cases, []],
+    failing_empty     = [@failing_groups & empty_groups, failing_cases & empty_cases, []],
+
+    passing_completed = [passing_groups & completed_groups, passing_cases & completed_cases, passing_exprs],
+    passing_empty     = [@passing_groups & empty_groups, passing_cases & empty_cases, []],
+
+    skipping_completed = [skipping_groups & completed_groups, skipping_cases & completed_cases, []],
+    skipping_crashed   = [skipping_groups & crashed_groups, skipping_cases & crashed_cases, []],
+    skipping_empty     = [@skipping_groups & empty_groups, skipping_cases & empty_cases, []],
+  )
+
+  say "\nTotal: #{total_groups} #{total_cases} #{total_exprs}"
+  say "\n         Compl.\tCrash\tEmpty"
+  say "Passing  #{t(passing_completed)}  ----- \t#{t(passing_empty)}"
+  say "Failing  #{t(failing_completed)} \t#{t(failing_crashed)} \t#{t(failing_empty)}"
+  say "Skipping #{t(skipping_completed)} \t#{t(skipping_crashed)} \t#{t(skipping_empty)}"
+
+  # say "\tFiles: Planned: #{total_groups} | Completed: #{completed_groups} ( Passing: #{passing_files} | Failing: #{failing_files} ) Crashing: #{crashing_files} | Empty: #{empty_files}"
+  # say "\tCases: Planned: #{total_cases} | Completed: #{completed_cases} ( Passing: #{passing_cases} | Failing: #{failing_cases} ) Crashing: #{crashing_cases} | Empty: #{empty_cases}"
+  # say "\tExprs: Tested: #{total_exprs} | Passing: #{passing_exprs} | Failing: #{failing_exprs}"
+  say "\nFound jewel-quality Sidef." if (passing_groups==completed_groups)
 }
 
 if (__FILE__ == __MAIN__) {
