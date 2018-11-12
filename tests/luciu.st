@@ -3,7 +3,7 @@ Luciu("luciu1"): {
   |is, isnt, dies, lives|
 
   is(true)
-  assert(false)
+  assert(true)
   is(("a" =~ /(a)/)[0], "a")
   is([1, 2, 3], [1, 2, 3])
   is()

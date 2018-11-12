@@ -6,6 +6,8 @@ Luciu("skip_empty"): {
 
 
 Luciu("empty_no_skip"): {
+  |a, b, c, d, skip|
+  skip()
 },
 
 Luciu("another_case"): {

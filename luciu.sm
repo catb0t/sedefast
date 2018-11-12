@@ -450,7 +450,9 @@ func main {
   say "Skipped\t#{t(skipping_completed)}\t#{t(skipping_crashed)} \t#{t(skipping_empty)}"
   say "\tG C E\tG C E\tG C E"
 
-  say "\nFound jewel-quality Sidef." if (passing_groups==completed_groups)
+  if ((passing_groups | skipping_groups)==completed_groups && total_exprs!=0) {
+    say "\nFound jewel-quality Sidef."
+  }
 }
 
 if (__FILE__ == __MAIN__) {
