@@ -95,11 +95,10 @@ class Luciu (case_name) {
           reason.caused_by(args[0]).explain("#{test_like} expression")
           if (test_like == Bool(args[0])) {
             reason.result(Expression::PASS).lock
-            goto reason.result
           } else {
             reason.result(Expression::FAIL).lock
-            goto reason.result
           }
+          goto reason.result
         }
         default {
           args.combinations(2).each {
@@ -134,19 +133,20 @@ class Luciu (case_name) {
     self._su_fun[0](self._su_fun[1]...)
     var reason = Reason() \
       .func_name(__METHOD_NAME__) \
-      .called_with( :(:block => block, :regexes => regexes, :args => args) )
+      .called_with( :(:block => block, :regexes => regexes, :args => args) ) \
+      .caused_by([block, args])
 
     try {
       block.run(args...)
-      reason.result(Expression::FAIL).caused_by([block, args]).explain("no error caught").lock
+      reason.result(Expression::FAIL).explain("no error caught").lock
       goto :no_exc
     } catch {
       |type, msg|
       if (type~~regexes[0] && msg~~regexes[1]) {
-        reason.result(Expression::PASS).caused_by([block, args]).explain("expected error caught").lock
+        reason.result(Expression::PASS).explain("expected error caught").lock
         goto :expected_exc
       }
-      reason.result(Expression::FAIL).caused_by([block, args]).explain("unexpected error caught").lock
+      reason.result(Expression::FAIL).explain("unexpected error caught").lock
       goto :unexpected_exc
     }
     die "#{__CLASS_NAME__}.#{__METHOD_NAME__}: how did we get here?"
@@ -194,6 +194,34 @@ class Luciu (case_name) {
       return reason
   }
 
+  method _generate_says (test_like = true) {
+    -> returned_func (block, test_exp) {
+      self._su_fun[0](self._su_fun[1]...)
+      var reason = Reason() \
+        .func_name(__METHOD_NAME__) \
+        .called_with( :(:block => block, :test_exp) ) \
+
+      var output = block.capture()
+      reason.caused_by([output, test_exp])
+      if (test_like == (output ~~ test_exp)) {
+        reason.result(Expression::PASS).explain("block matches expression").lock
+      } else {
+        reason.result(Expression::FAIL).explain("block doesn't match expression").lock
+      }
+      goto reason.result
+
+      @:pass
+        say "\tPASS\tsays\t\t#{[output[0..10]].join()} ~~ #{[test_exp.to_s[0..10]].join()}"
+        goto :end
+      @:fail
+        say "\tFAIL\tsays\t\t#{[output[0..10]].join()} ~~ #{[test_exp.to_s[0..10]].join()}"
+      @:end
+        self._td_fun[0](reason, self._td_fun[1]...)
+        self.reasons.append(reason)
+        return reason
+    }
+  }
+
   method _skip (*args) {
     args
     self.skip_called
@@ -233,6 +261,7 @@ class Luciu (case_name) {
         self.method("_dies"),
         self.method("_lives"),
         self.method("_skip"),
+        self._generate_says(true),
         self
       )
       prelim_state = (self.reasons.len ? :completed : :empty)
