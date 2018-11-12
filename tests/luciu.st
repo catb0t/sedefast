@@ -1,13 +1,13 @@
 [
-Luciu("luciu"): {
+Luciu("luciu1"): {
   |is, isnt, dies, lives|
 
+  is(true)
+  assert(false)
   is(("a" =~ /(a)/)[0], "a")
   is([1, 2, 3], [1, 2, 3])
-  is(true)
   is()
   is(1, 1, 1) # fails
-  #die "dies"
 
   isnt(("a" =~ /a/)[0], "a")
   isnt(false)      # like assert_ne

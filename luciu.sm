@@ -9,7 +9,7 @@
 ##    Artistic License 2.0 or GPLv3 with this program;
 ##    if not, see <https://github.com/catb0t/sedefactor>
 
-subset State < String { %w(completed crashed passed).contains(_) }
+subset State < String { %w(completed crashed empty).contains(_) }
 subset Result < String { %w(failed passed skipped).contains(_) }
 subset ExpressionResult < String { %w(fail pass).contains(_) }
 module Expression { define FAIL = :fail; define PASS = :pass }
@@ -60,7 +60,6 @@ class Luciu (case_name) {
 
   has Number failed_exprs = 0
   has Number passed_exprs = 0
-  has Number ran_exprs    = 0
   has Pair crash_info
   has _su_fun = Pair({}, [])
   has _td_fun = Pair({}, [])
@@ -73,6 +72,8 @@ class Luciu (case_name) {
   -> skip_called () -> Luciu { self._skip_called = true; self }
 
   has data_store # for storing data between su/call/td
+
+  has padding = 7
 
   method _generate_is (test_like = true) {
     -> returned_func (*args) {
@@ -195,24 +196,29 @@ class Luciu (case_name) {
 
   method _skip (*args) {
     args
+    self.skip_called
     # ???
+    die "STOPITERATION:SKIP"
   }
 
   method summary {
-    var pad = 7
     if (self._state != :completed) {
       var text = if (self._state == :crashed) {
-        Pair("CRASH", "uncaught die / assert / warn")
+        Pair("CRASH", "unexpected die / assert / warn")
       } else {
         Pair("EMPTY", "devoid of expressions (without calling skip())")
       }
-      ("%*s %s\n").printf(pad, text)
+      ("%*s %s\n").printf(self.padding, text...)
     }
-    ("%*s Case '%s'\n").printf(pad, String(self._result[^4]).uc, self.case_name)
-    if (self._result == :failed) {
-      ("%*s failed -> %s\n").printf(pad, self.failed_exprs.len, self.failed_exprs.dump)
-    } elsif (self._state == :crashed) {
-      ("%*s crash -> %s\n").printf(pad, "", self.crash_info.dump)
+    ("%*s Case '%s'\n").printf(self.padding, String(self._result[^4]).uc, self.case_name)
+    if (self._state == :crashed) {
+      ("%*s crash -> %s\n").printf(self.padding, "", self.crash_info.dump)
+    } elsif (self._result == :failed) {
+      if (self._state != :empty) {
+        ("%*s failed -> %s\n").printf(self.padding, self.failed_exprs.len, self.failed_exprs.dump)
+      } else {
+        ("%*s failed -> %s\n").printf(self.padding, 1, "case has no expressions and doesn't call skip()")
+      }
     }
     say()
   }
@@ -241,14 +247,24 @@ class Luciu (case_name) {
 
     } catch {
         |type, msg|
-      # TODO: allow configuration of whether warn() is recorded as a crash
-      say "!!! Luciu caught '#{type}' '#{msg}'"
-      prelim_state = :crashed
-      prelim_result = (self._skip_on_crash ? :skipped : :failed)
-      self.crash_info = Pair(type, msg)
-      # 'reason' is nil here
-      # teardown_function can check that and become a crash handler
-      self._td_fun[0](nil, self._td_fun[1]...)
+        # TODO: allow configuration of whether warn() is recorded as a crash
+
+      # this is not a real exception, this is what we threw
+      # in order to implement skip
+      if (msg =~ /STOPITERATION:SKIP/) {
+        # these are just hard facts
+        prelim_state = :completed
+        prelim_result = :skipped
+      } else {
+        ("%*s '#{type}': '#{msg}'\n").printf(7, "OOPS")
+        prelim_state = :crashed
+        prelim_result = (self._skip_on_crash ? :skipped : :failed)
+        self.crash_info = Pair(type, msg)
+
+        # 'reason' is nil here
+        # teardown_function can check that and become a crash handler
+        self._td_fun[0](nil, self._td_fun[1]...)
+      }
     }
 
     -> result_fight (a < Result, b < Result) { # combine results to find the winner
@@ -278,7 +294,6 @@ class Luciu (case_name) {
 
     self.failed_exprs = failed_reasons
     self.passed_exprs = passed_reasons
-    self.ran_exprs    = self.reasons
 
     self.summary
 
@@ -287,6 +302,10 @@ class Luciu (case_name) {
 }
 
 class Case < Luciu {}
+
+class Group {
+
+}
 
 func do_group (String code) {
   __FUNC__(eval(code))
@@ -352,11 +371,13 @@ func main {
     total_groups = run_groups.len,
     passing_groups = Set(run_groups.grep{ .all{ .result == :passed } }...),
     failing_groups = Set(run_groups.grep{ .any{ .result == :failed } }...), # note the any
-    skipping_groups = Set(run_groups.grep{ .all{ .result == :skipped } }...),
+    # this next `any` is unfortunate but will be changed inside Group()
+    skipping_groups = Set(run_groups.grep{ .any{ .result == :skipped } }...),
 
-    completed_groups = Set(run_groups.grep{ .all{ .state == :completed } }...),
-    crashed_groups = Set(run_groups.grep{ .any{ .state == :crashed } }...), # note the any
-    empty_groups = run_groups.grep{ .len == 0 }, # TODO
+    # a group is only crashed when all of its cases are crashed
+    completed_groups = Set(run_groups.grep{ .any{ .state == :completed } }...),
+    crashed_groups = Set(run_groups.grep{ .all{ .state == :crashed } }...),
+    empty_groups = run_groups.grep{ .len == 0 }, # currently this searches for [] which is correct
 
     cases = run_groups.map{ _... },
     total_cases = cases.len,
@@ -365,11 +386,11 @@ func main {
     skipping_cases = Set(cases.grep{ .result == :skipped }...),
 
     completed_cases = Set(cases.grep{ .state == :completed }...),
-    crashed_cases = Set(cases.grep{ .result == :crashed }...),
+    crashed_cases = Set(cases.grep{ .state == :crashed }...),
     empty_cases = Set(cases.grep{ .state == :empty }...),
 
     # exprs = cases.map{ _.reasons }
-    total_exprs = cases.map{ .ran_exprs.len }.sum,
+    total_exprs = cases.map{ .reasons.len }.sum,
     failing_exprs = cases.map{ .failed_exprs }.sum,
     passing_exprs = cases.map{ .passed_exprs }.sum,
   )
@@ -392,15 +413,14 @@ func main {
     skipping_empty     = [@skipping_groups & empty_groups, skipping_cases & empty_cases, []],
   )
 
-  say "\nTotal: #{total_groups} #{total_cases} #{total_exprs}"
-  say "\n         Compl.\tCrash\tEmpty"
-  say "Passing  #{t(passing_completed)}  ----- \t#{t(passing_empty)}"
-  say "Failing  #{t(failing_completed)} \t#{t(failing_crashed)} \t#{t(failing_empty)}"
-  say "Skipping #{t(skipping_completed)} \t#{t(skipping_crashed)} \t#{t(skipping_empty)}"
+  var (gs = ("s" if total_groups!=1), cs = ("s" if total_cases!=1), es = ("s" total_exprs!=1))
+  say "\nPlanned\t#{total_groups} Group#{gs}, #{total_cases} Case#{cs}, #{total_exprs} Expr#{es}"
+  say "\n        Compl.\tCrash\tEmpty"
+  say "Passed\t#{t(passing_completed)}\t----- \t#{t(passing_empty)}"
+  say "Failed\t#{t(failing_completed)}\t#{t(failing_crashed)} \t#{t(failing_empty)}"
+  say "Skipped\t#{t(skipping_completed)}\t#{t(skipping_crashed)} \t#{t(skipping_empty)}"
+  say "\tG C E\tG C E\tG C E"
 
-  # say "\tFiles: Planned: #{total_groups} | Completed: #{completed_groups} ( Passing: #{passing_files} | Failing: #{failing_files} ) Crashing: #{crashing_files} | Empty: #{empty_files}"
-  # say "\tCases: Planned: #{total_cases} | Completed: #{completed_cases} ( Passing: #{passing_cases} | Failing: #{failing_cases} ) Crashing: #{crashing_cases} | Empty: #{empty_cases}"
-  # say "\tExprs: Tested: #{total_exprs} | Passing: #{passing_exprs} | Failing: #{failing_exprs}"
   say "\nFound jewel-quality Sidef." if (passing_groups==completed_groups)
 }
 

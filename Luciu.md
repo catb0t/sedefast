@@ -25,7 +25,7 @@ and a Result:
 
 An object has one state and one result. The combination "Crashed+Passed" is meaningless but might be used in the future.
 
-Expressions are not objects, and have neither a Result nor a State: they have a Reason containing a `:result` key which is either `Expression::PASS` or `Expression::FAIL`.
+Expressions are not objects, and have neither a Result nor a State: they have a Reason member (`reason`) containing a `result` which is either `Expression::PASS` or `Expression::FAIL`.
 
 | State/Result 	|              Completed              	|            Crashed           	|             Empty             	|
 |:------------:	|:-----------------------------------:	|:----------------------------:	|:-----------------------------:	|
@@ -36,9 +36,9 @@ Expressions are not objects, and have neither a Result nor a State: they have a 
 \* due to testing configuration
 
 * Completed: when a case executes to completion; a group containing only completed cases is also *completed*
-  * Failed: expression in a case doesn't run as specified; the case continues executing but is marked *failed* (i.e. `:result` = `FAIL`)
+  * Failed: expression in a case doesn't run as specified; the case continues executing but is marked *failed*
 
-  * Passed: all expressions in a given case, file, or directory ran as specified (`:result` = `PASS`)
+  * Passed: all expressions in a given case, file, or directory ran as specified
 
   * Skipped: case contains `skip()` expression, or a file was skipped due to configuration
 
@@ -56,3 +56,5 @@ Expressions are not objects, and have neither a Result nor a State: they have a 
   * S: a file containing no `[ ]` form at all, which has no return value, and thus no meaning
 
 A file without a `[ ]` form is not considered an error (unless specified by configuration), but a diagnostic is issued.
+
+A group is Completed+Skipped when all of its cases call `skip()`, or when the configuration marks it to be skipped.
