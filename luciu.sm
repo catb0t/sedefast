@@ -449,11 +449,13 @@ func main {
   } catch {}
 
   var (gs = ("s" if total_groups!=1), cs = ("s" if total_cases!=1), es = ("s" total_exprs!=1))
-  say "\nPlanned\t#{total_groups} Group#{gs}, #{total_cases} Case#{cs}, #{total_exprs} Expr#{es}\n"
 
   if (using_table) {
-    var tb = Table.new("", "Completed", "Crashed", "Empty")
+    say()
+    var tb = Table.new("Planned", "#{total_groups} Group#{gs}", "#{total_cases} Case#{cs}", "#{total_exprs} Expr#{es}")
     tb.load(
+      [ " ", " ", " ", " " ],
+      [ "", "Completed", "Crashed", "Empty" ],
       ["Passing", t(passing_completed), "", t(passing_empty)],
       ["Failing", t(failing_completed), t(failing_crashed), t(failing_empty)]
       ["Skipping", t(skipping_completed), t(skipping_crashed), t(skipping_empty)]
@@ -462,6 +464,7 @@ func main {
     say tb.stringify
 
   } else {
+    say "\nPlanned\t#{total_groups} Group#{gs}, #{total_cases} Case#{cs}, #{total_exprs} Expr#{es}\n"
     say "\n        Compl.\tCrash\tEmpty"
     say "Passed\t#{t(passing_completed)}\t----- \t#{t(passing_empty)}"
     say "Failed\t#{t(failing_completed)}\t#{t(failing_crashed)} \t#{t(failing_empty)}"

@@ -58,3 +58,68 @@ Expressions are not objects, and have neither a Result nor a State: they have a 
 A file without a `[ ]` form is not considered an error (unless specified by configuration), but a diagnostic is issued.
 
 A group is Completed+Skipped when all of its cases call `skip()`, or when the configuration marks it to be skipped.
+
+```
+$ sidef luciu.sm tests/
+How glossy is your Sidef?
+
+Opening 'tests/'...
+ Testing cases in 'tests/luciu.st'...
+   TEST Case 'luciu1'...
+	PASS	equality	[true]
+	PASS	equality	["a", "a"]
+	PASS	equality	[[1, 2, 3], [1, 2, 3]]
+	PASS	equality	[]
+	PASS	equality	[1, 1, 1]
+	PASS	inequality	["1", "a"]
+	PASS	inequality	[false]
+	PASS	inequality	[[1, 2, 3], [1, 2]]
+	PASS	inequality	[1, 2, 3, 4]
+	PASS	inequality	[1, 2, 3, 4]
+	PASS	dies		[native code]
+	PASS	dies		[native code]
+	PASS	dies		[native code]
+	PASS	lives		[native code]
+   PASS Case 'luciu1'
+
+   TEST Case 'luciu2'...
+	PASS	equality	["a", "a"]
+	PASS	equality	[[1, 2, 3], [1, 2, 3]]
+	PASS	equality	[true]
+	PASS	equality	[]
+	PASS	equality	[1, 1, 1]
+	PASS	inequality	["1", "a"]
+	PASS	inequality	[false]
+	PASS	inequality	[[1, 2, 3], [1, 2]]
+	PASS	inequality	[1, 2, 3, 4]
+	PASS	dies		[native code]
+	PASS	dies		[native code]
+	PASS	dies		[native code]
+	PASS	lives		[native code]
+   PASS Case 'luciu2'
+
+ Tested 'tests/luciu.st'
+ Testing cases in 'tests/again.st'...
+   TEST Case 'skip_empty'...
+   SKIP Case 'skip_empty'
+
+   TEST Case 'empty_no_skip'...
+   SKIP Case 'empty_no_skip'
+
+   TEST Case 'another_case'...
+	PASS	says		'this shou...' ~~ '/shouldn'...'
+   PASS Case 'another_case'
+
+ Tested 'tests/again.st'
+Finished 'tests/'.
+
+Planned  2 Groups, 5 Cases, 28 Exprs
+
+         Completed Crashed Empty
+Passing  1 3 28            0 0 0
+Failing  0 0 0     0 0 0   0 0 0
+Skipping 1 2 0     0 0 0   0 0 0
+         G C E     G C E   G C E
+
+Found jewel-quality Sidef.
+```
