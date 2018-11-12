@@ -432,14 +432,14 @@ func main {
   var (
     failing_completed = [failing_groups & completed_groups, failing_cases & completed_cases, failing_exprs],
     failing_crashed   = [failing_groups & crashed_groups, failing_cases & crashed_cases, []],
-    failing_empty     = [@failing_groups & empty_groups, failing_cases & empty_cases, []],
+    failing_empty     = [failing_groups & empty_groups, failing_cases & empty_cases, []],
 
     passing_completed = [passing_groups & completed_groups, passing_cases & completed_cases, passing_exprs],
-    passing_empty     = [@passing_groups & empty_groups, passing_cases & empty_cases, []],
+    passing_empty     = [passing_groups & empty_groups, passing_cases & empty_cases, []],
 
     skipping_completed = [skipping_groups & completed_groups, skipping_cases & completed_cases, []],
     skipping_crashed   = [skipping_groups & crashed_groups, skipping_cases & crashed_cases, []],
-    skipping_empty     = [@skipping_groups & empty_groups, skipping_cases & empty_cases, []],
+    skipping_empty     = [skipping_groups & empty_groups, skipping_cases & empty_cases, []],
   )
 
   var (Table, using_table = false)
