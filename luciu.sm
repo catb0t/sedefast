@@ -211,10 +211,10 @@ class Luciu (case_name) {
       goto reason.result
 
       @:pass
-        say "\tPASS\tsays\t\t#{[output[0..10]].join()} ~~ #{[test_exp.to_s[0..10]].join()}"
+        say "\tPASS\tsays\t\t'#{[output[0..8]].join()}...' ~~ '#{[test_exp.to_s[0..8]].join()}...'"
         goto :end
       @:fail
-        say "\tFAIL\tsays\t\t#{[output[0..10]].join()} ~~ #{[test_exp.to_s[0..10]].join()}"
+        say "\tFAIL\tsays\t\t'#{[output[0..8]].join()}...' ~~ '#{[test_exp.to_s[0..8]].join()}...'"
       @:end
         self._td_fun[0](reason, self._td_fun[1]...)
         self.reasons.append(reason)
@@ -442,16 +442,35 @@ func main {
     skipping_empty     = [@skipping_groups & empty_groups, skipping_cases & empty_cases, []],
   )
 
+  var (Table, using_table = false)
+  try {
+    Table = require("Text::Table")
+    using_table = true
+  } catch {}
+
   var (gs = ("s" if total_groups!=1), cs = ("s" if total_cases!=1), es = ("s" total_exprs!=1))
-  say "\nPlanned\t#{total_groups} Group#{gs}, #{total_cases} Case#{cs}, #{total_exprs} Expr#{es}"
-  say "\n        Compl.\tCrash\tEmpty"
-  say "Passed\t#{t(passing_completed)}\t----- \t#{t(passing_empty)}"
-  say "Failed\t#{t(failing_completed)}\t#{t(failing_crashed)} \t#{t(failing_empty)}"
-  say "Skipped\t#{t(skipping_completed)}\t#{t(skipping_crashed)} \t#{t(skipping_empty)}"
-  say "\tG C E\tG C E\tG C E"
+  say "\nPlanned\t#{total_groups} Group#{gs}, #{total_cases} Case#{cs}, #{total_exprs} Expr#{es}\n"
+
+  if (using_table) {
+    var tb = Table.new("", "Completed", "Crashed", "Empty")
+    tb.load(
+      ["Passing", t(passing_completed), "", t(passing_empty)],
+      ["Failing", t(failing_completed), t(failing_crashed), t(failing_empty)]
+      ["Skipping", t(skipping_completed), t(skipping_crashed), t(skipping_empty)]
+      ["", "G C E", "G C E", "G C E"]
+    )
+    say tb.stringify
+
+  } else {
+    say "\n        Compl.\tCrash\tEmpty"
+    say "Passed\t#{t(passing_completed)}\t----- \t#{t(passing_empty)}"
+    say "Failed\t#{t(failing_completed)}\t#{t(failing_crashed)} \t#{t(failing_empty)}"
+    say "Skipped\t#{t(skipping_completed)}\t#{t(skipping_crashed)} \t#{t(skipping_empty)}"
+    say "\tG C E\tG C E\tG C E"
+  }
 
   if ((passing_groups | skipping_groups)==completed_groups && total_exprs!=0) {
-    say "\nFound jewel-quality Sidef."
+    say "Found jewel-quality Sidef."
   }
 }
 
