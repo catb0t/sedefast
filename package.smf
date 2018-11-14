@@ -1,5 +1,7 @@
+# describes this source repository for downstream projects
 Package(
   contains: [
     "luciu", "sedefast"
-  ]
+  ],
+
 )

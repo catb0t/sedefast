@@ -1,3 +1,4 @@
+# describes one module
 Manifest(
   name: "Luciu",
   version: "0.3",
@@ -7,7 +8,7 @@ Manifest(
   # manifest: "https://github.com/catb0t/sedefast/luciu.smm",
   license: ["Artistic2", "GPLv3"],
 
-  source_basename: "https://github.com/catb0t/sedefast",
+  # source_basename: "https://github.com/catb0t/sedefast",
   source_files: [
     "luciu.sm",
     "Luciu.md",

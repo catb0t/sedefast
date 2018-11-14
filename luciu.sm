@@ -71,6 +71,9 @@ class Luciu (case_name) {
   has Bool _skip_called
   -> skip_called () -> Luciu { self._skip_called = true; self }
 
+  has Bool _stopped
+  -> stopped () -> Luciu { self._stopped = true; self }
+
   has data_store # for storing data between su/call/td
 
   has padding = 7
@@ -229,6 +232,13 @@ class Luciu (case_name) {
     die "STOPITERATION:SKIP"
   }
 
+  method stop (*args) {
+    args
+    self.stopped
+    # ???
+    die "STOPITERATION:STOP"
+  }
+
   method summary {
     if (self._state != :completed) {
       var text = if (self._state == :crashed) {
@@ -330,29 +340,76 @@ class Luciu (case_name) {
   }
 }
 
+-> ec (x) { eval(x) }
+
 class Case < Luciu {}
 
-class Group {
+class Group (name, source) {
+  # handle stop from sub-cases
+  has Array cases = []
+  has empty_file = false
+  # has State group_state
+  has Result group_result
+  method go () {
 
+    var cases = ec(self.source)
+    if (! defined(cases)) {
+      self.empty_file = true
+      self.group_result = :skipped
+      return self
+    }
+
+    self.cases = cases
+
+    var (
+      failed_cases = cases.grep{ .result == :failed },
+      passed_cases = cases.grep{ .result == :passed }
+    )
+
+    self.group_result = if (failed_cases.len) {
+      :failed
+    } elsif (cases==[] || (!failed_cases.len && passed_cases==cases)) {
+      :passed
+    }
+
+    # output = eval( file_contents )
+    # if (defined(output) && !output.len) { empty_files++ }
+    # elsif ((!defined(output)) && (!file_contents)) { empty_files++; output = [] }
+    # run_tests.append(output)
+    #
+    # var sum = if (output.any{ .crashed }) { "CRASH!"
+    # } elsif (output.any{ .empty }) { "EMPTY!"
+    # } elsif (output.any{ .failed }) { "FAIL"
+    # } elsif (output.all{ .passed }) { "PASS"
+    # } elsif (!output) { "EMPTY!" }
+
+    self
+  }
 }
 
-func do_group (String code) {
-  __FUNC__(eval(code))
-}
+struct Config {
+  String require_version = "0",
 
-func do_group (Array group) {
-  group
+  Hash dir_like = Hash(
+    "ignore" => [],
+    "do" => [],
+  ),
+  Hash file_like = Hash(
+    "ignore" => [],
+    "do" => []
+  ),
+  Hash skip = Hash(
+    "exact" => [],
+    "like" => [],
+    "empty_like" => false,
+    "always" => false
+  ), # "exact"
+  Hash ignore_crash = Hash(
+    "exact" => [],
+    "like" => [],
+    "always" => false
+  ),
 
-  # output = eval( file_contents )
-  # if (defined(output) && !output.len) { empty_files++ }
-  # elsif ((!defined(output)) && (!file_contents)) { empty_files++; output = [] }
-  # run_tests.append(output)
-#
-  # var sum = if (output.any{ .crashed }) { "CRASH!"
-  # } elsif (output.any{ .empty }) { "EMPTY!"
-  # } elsif (output.any{ .failed }) { "FAIL"
-  # } elsif (output.all{ .passed }) { "PASS"
-  # } elsif (!output) { "EMPTY!" }
 }
 
 # test-generator based on input / expectation specification
@@ -366,7 +423,7 @@ func main {
   # very simple for now, no config
   var test_dirs = ARGV.map{ Dir(_) }
   var run_groups = []
-  var empty_filenames = []
+  # var empty_filenames = []
   for dir in (test_dirs) {
     say "Opening '#{dir}'..."
 
@@ -377,12 +434,15 @@ func main {
           |name|
         say " Testing cases in '#{dir+name}'..."
         var file_contents = (dir+File(name)->open_r.slurp)
-        var res = do_group(file_contents)
+        var c = Config()
+        c
+        var g = Group(dir+File(name), file_contents)
+        g.go
         # need to properly handle Empty+Passed (file has empty [])
         # and Empty+Skipped (file has no [], which causes res==nil)
         # Empty+Failed is only valid for cases and handled in Luciu
-        if (! defined(res)) { empty_filenames += dir+File(name) }
-        else { run_groups.append(res) }
+
+        run_groups.append(g)
         say " Tested '#{dir+name}'"
       }
     }
@@ -398,17 +458,17 @@ func main {
 
   var (
     total_groups = run_groups.len,
-    passing_groups = Set(run_groups.grep{ .all{ .result == :passed } }...),
-    failing_groups = Set(run_groups.grep{ .any{ .result == :failed } }...), # note the any
-    # this next `any` is unfortunate but will be changed inside Group()
-    skipping_groups = Set(run_groups.grep{ .any{ .result == :skipped } }...),
+    passing_groups = Set(run_groups.grep{ .group_result == :passed }...),
+    failing_groups = Set(run_groups.grep{ .group_result == :failed }...), # note the any
+    skipping_groups = Set(run_groups.grep{ .group_result == :skipped }...),
 
     # a group is only crashed when all of its cases are crashed
-    completed_groups = Set(run_groups.grep{ .any{ .state == :completed } }...),
-    crashed_groups = Set(run_groups.grep{ .all{ .state == :crashed } }...),
-    empty_groups = run_groups.grep{ .len == 0 }, # currently this searches for [] which is correct
+    completed_groups = Set(run_groups.grep{ .cases.any{ .state == :completed } }...),
+    crashed_groups = Set(run_groups.grep{ .cases.all{ .state == :crashed } }...),
+    empty_groups = run_groups.grep{ .cases.len == 0 && ! .empty_file }, # currently this searches for [] which is correct
+    empty_file_groups = run_groups.grep{ .empty_file },
 
-    cases = run_groups.map{ _... },
+    cases = run_groups.map{ .cases... },
     total_cases = cases.len,
     passing_cases = Set(cases.grep{ .result == :passed }...),
     failing_cases = Set(cases.grep{ .result == :failed }...),
@@ -420,33 +480,44 @@ func main {
 
     # exprs = cases.map{ _.reasons }
     total_exprs = cases.map{ .reasons.len }.sum,
-    failing_exprs = cases.map{ .failed_exprs }.sum,
-    passing_exprs = cases.map{ .passed_exprs }.sum,
+    failing_exprs = cases.map{ .failed_exprs.len }.sum,
+    passing_exprs = cases.map{ .passed_exprs.len }.sum,
   )
 
   func t (Array a) {
     var b = a.map{.to_a.grep{_}.len}
+    "#{b[0]} #{b[1]}"
+  }
+
+  func f (Array a) {
+    var b = a.map{.to_a.grep{_}.len}
+    b[2] = a[2]
     "#{b[0]} #{b[1]} #{b[2]}"
   }
 
   var (
     failing_completed = [failing_groups & completed_groups, failing_cases & completed_cases, failing_exprs],
-    failing_crashed   = [failing_groups & crashed_groups, failing_cases & crashed_cases, []],
-    failing_empty     = [failing_groups & empty_groups, failing_cases & empty_cases, []],
+    failing_crashed   = [failing_groups & crashed_groups, failing_cases & crashed_cases],
+    failing_empty     = [failing_groups & empty_groups, failing_cases & empty_cases],
 
     passing_completed = [passing_groups & completed_groups, passing_cases & completed_cases, passing_exprs],
-    passing_empty     = [passing_groups & empty_groups, passing_cases & empty_cases, []],
+    passing_empty     = [passing_groups & empty_groups, passing_cases & empty_cases],
 
-    skipping_completed = [skipping_groups & completed_groups, skipping_cases & completed_cases, []],
-    skipping_crashed   = [skipping_groups & crashed_groups, skipping_cases & crashed_cases, []],
-    skipping_empty     = [skipping_groups & empty_groups, skipping_cases & empty_cases, []],
+    skipping_completed = [skipping_groups & completed_groups, skipping_cases & completed_cases],
+    skipping_crashed   = [skipping_groups & crashed_groups, skipping_cases & crashed_cases],
+    skipping_empty     = [skipping_groups & empty_file_groups, skipping_cases & empty_cases],
   )
 
   var (Table, using_table = false)
   try {
-    Table = require("Text::Table")
+    Table = ("Text::Table").require
     using_table = true
-  } catch {}
+  } catch {
+    |t, msg|
+    if (! (msg.lc ~~ /can't locate/)) {
+      die "#{t}! :: #{msg}"
+    }
+  }
 
   var (gs = ("s" if total_groups!=1), cs = ("s" if total_cases!=1), es = ("s" total_exprs!=1))
 
@@ -456,20 +527,20 @@ func main {
     tb.load(
       [ " ", " ", " ", " " ],
       [ "", "Completed", "Crashed", "Empty" ],
-      ["Passing", t(passing_completed), "", t(passing_empty)],
-      ["Failing", t(failing_completed), t(failing_crashed), t(failing_empty)]
+      ["Passing", f(passing_completed), "", t(passing_empty)],
+      ["Failing", f(failing_completed), t(failing_crashed), t(failing_empty)]
       ["Skipping", t(skipping_completed), t(skipping_crashed), t(skipping_empty)]
-      ["", "G C E", "G C E", "G C E"]
+      ["", "G C E", "G C", "G C"]
     )
     say tb.stringify
 
   } else {
     say "\nPlanned\t#{total_groups} Group#{gs}, #{total_cases} Case#{cs}, #{total_exprs} Expr#{es}\n"
     say "\n        Compl.\tCrash\tEmpty"
-    say "Passed\t#{t(passing_completed)}\t----- \t#{t(passing_empty)}"
-    say "Failed\t#{t(failing_completed)}\t#{t(failing_crashed)} \t#{t(failing_empty)}"
+    say "Passed\t#{f(passing_completed)}\t----- \t#{t(passing_empty)}"
+    say "Failed\t#{f(failing_completed)}\t#{t(failing_crashed)} \t#{t(failing_empty)}"
     say "Skipped\t#{t(skipping_completed)}\t#{t(skipping_crashed)} \t#{t(skipping_empty)}"
-    say "\tG C E\tG C E\tG C E"
+    say "\tG C E\tG C\tG C"
   }
 
   if ((passing_groups | skipping_groups)==completed_groups && total_exprs!=0) {
