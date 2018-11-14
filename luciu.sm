@@ -48,7 +48,7 @@ class Reason {
 }
 
 # how glossy is your Sidef?
-class Luciu (case_name) {
+class Luciu (String case_name) {
 
   has Array reasons = []
   has State  _state
@@ -266,13 +266,14 @@ class Luciu (case_name) {
     var (State prelim_state, Result prelim_result)
     try {
       block.run(
-        self._generate_is(true),
-        self._generate_is(false),
-        self.method("_dies"),
-        self.method("_lives"),
-        self.method("_skip"),
-        self._generate_says(true),
-        self
+        self._generate_is(true),        # is
+        self._generate_is(false),       # isnt
+        self.method("_dies"),           # dies
+        self.method("_lives"),          # lives
+        self.method("_skip"),           # skip
+        self._generate_says(true),      # says
+        self.method("stop"),            # stop
+        self                            # self
       )
       prelim_state = (self.reasons.len ? :completed : :empty)
 
@@ -290,10 +291,13 @@ class Luciu (case_name) {
 
       # this is not a real exception, this is what we threw
       # in order to implement skip
-      if (msg =~ /STOPITERATION:SKIP/) {
+      if (msg ~~ /STOPITERATION:SKIP/) {
         # these are just hard facts
         prelim_state = :completed
         prelim_result = :skipped
+      } elsif (msg ~~ /STOPITERATION:STOP/) {
+        # it doesn't matter whether this dies or exits
+        die msg
       } else {
         ("%*s '#{type}': '#{msg}'\n").printf(7, "OOPS")
         prelim_state = :crashed
@@ -346,18 +350,25 @@ class Case < Luciu {}
 
 class Group (name, source) {
   # handle stop from sub-cases
+  # provide type-checked getters / setters
   has Array cases = []
   has empty_file = false
   # has State group_state
-  has Result group_result
+  has Result _group_result
+  -> group_result () -> String { self._group_result }
+  -> group_result (gr < Result) -> Group { self._group_result = gr; self }
   method go () {
 
     var cases = ec(self.source)
     if (! defined(cases)) {
       self.empty_file = true
-      self.group_result = :skipped
+      self.group_result(:skipped)
       return self
+    } elsif ( cases.any{ ._stopped } ) {
+      die "STOPITERATION:STOP"
     }
+    # hmmm
+    # self.source = nil
 
     self.cases = cases
 
@@ -366,11 +377,11 @@ class Group (name, source) {
       passed_cases = cases.grep{ .result == :passed }
     )
 
-    self.group_result = if (failed_cases.len) {
+    self.group_result(if (failed_cases.len) {
       :failed
     } elsif (cases==[] || (!failed_cases.len && passed_cases==cases)) {
       :passed
-    }
+    })
 
     # output = eval( file_contents )
     # if (defined(output) && !output.len) { empty_files++ }
@@ -437,11 +448,18 @@ func main {
         var c = Config()
         c
         var g = Group(dir+File(name), file_contents)
-        g.go
         # need to properly handle Empty+Passed (file has empty [])
         # and Empty+Skipped (file has no [], which causes res==nil)
         # Empty+Failed is only valid for cases and handled in Luciu
-
+        try {
+          g.go
+        } catch {
+          |_, msg|
+          if (msg ~~ /STOPITERATION:STOP/) {
+            say "\t!! Stopped!"
+            Sys.exit(2)
+          }
+        }
         run_groups.append(g)
         say " Tested '#{dir+name}'"
       }
