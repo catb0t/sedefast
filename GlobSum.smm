@@ -1,20 +1,20 @@
 # describes one module
 ModMan(
-  name: "Luciu",
+  name: "GlobSum",
   revision: 0,
-  doc: "mini test framework for Sidef",
+  doc: "checksum Glob objects",
   bug: "github.com/catb0t/sedefast/issues",
 
   license: ["Artistic2", "GPLv3"],
 
   source_files: [
-    "luciu.sm",
+    "GlobSum.sm",
     "Luciu.md",
     "LICENSE-artistic2",
     "LICENSE-gpl3"
   ],
   source_dirs: [
-    "tests"
+    "GlobSum_tests"
   ],
 
   depends: Hash()

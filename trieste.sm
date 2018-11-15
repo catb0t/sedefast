@@ -3,17 +3,93 @@
   eval 'exec sidef -Wk $0 ${1+"$@"}'
 }
 
-##  Trieste, dead simple dependency management for Sidef
+##  Trieste, revision-forwarding file-oriented dependency management for Sidef
 ##    Copyright Cat Stevens 2018
 ##  You should have recieved a copy of either the
 ##    Artistic License 2.0 or GPLv3 with this program;
 ##    if not, see <https://github.com/catb0t/sedefactor>
 
-func trieste_main {
-  # no argument parsing for now
+subset CouInt < Number { .is_int && .is_pos }
+subset ArrStr < Array, String { _ }
 
+class Package (Array contains, Hash depends, Dir vendor_dir) {}
+class ModMan (
+  String name,
+  revision < CouInt,
+  String doc,
+  String bug,
+  license < ArrStr,
+  Array source_files,
+  Array source_dirs
+) {}
+
+var PACKAGE_MANIFEST_NAME = "package.smf"
+var SM_MANIFEST_EXT = ".smf"
+
+# file name list naturally sorted
+func checksum_directory_listing (Dir name) {}
+# file contents in naturally sorted order
+func checksum_directory_files (Dir name) {}
+
+func rrd_recursive (Dir name, Hash tree) -> Hash {
+  var Package mf = read_package_manifest(name + PACKAGE_MANIFEST_NAME)
+  tree{name} = mf
+  for mod in mf.contains {
+    var (
+      smm_name = name+File(mod + SM_MANIFEST_EXT),
+      smm_contents = smm_name.open_r.slurp,
+      smm_value = eval(smm_contents)
+    )
+    if (! smm_name.exists) {
+      die "no such file: #{smm_name}"
+    } elsif (! smm_contents) {
+      die "empty smm: #{smm_name}"
+    } elsif (! defined(smm_value)) {
+      die "malformed smm: #{smm_value}"
+    }
+
+
+
+  }
+  tree
+}
+
+func record_recurse_dirs (Dir name) -> Hash {
+  name.exists || die "no such directory #{name}"
+
+  var tree = Hash(name => read_package_manifest())
+}
+
+func read_package_manifest (File name) -> Package {
+  var package_contents = name.open_r.slurp
+  if (! package_contents) {
+    die "empty package.smf"
+    Sys.exit(2)
+  }
+
+  var package = eval(package_contents)
+
+  if (! defined(package)) {
+    die "malformed package.smf"
+    Sys.exit(2)
+  }
+  package
+}
+
+func dolocal {
+
+  # step 1: going to read Package
+  var base_package = read_package_manifest()
+
+  #2: ensure the directory exists
+  package.vendor_dir.make_tree \
+    || die "can't create vendor code target directory: #{package.vendor_dir}"
+
+  var tree = record_recurse_dirs(%d(./))
+
+  say package.dump
 }
 
 if (__FILE__ == __MAIN__) {
-  trieste_main()
+  dolocal()
 }

@@ -1,0 +1,22 @@
+# describes one module
+Manifest(
+  name: "Trieste",
+  revision: 0,
+  doc: "revision-forwarding file-oriented dependency manager",
+  bug: "github.com/catb0t/sedefast/issues",
+
+  # manifest: "https://github.com/catb0t/sedefast/trieste.smm",
+  license: ["Artistic2", "GPLv3"],
+
+  # source_basename: "https://github.com/catb0t/sedefast",
+  source_files: [
+    "trieste.sm",
+    "Trieste.md",
+    "LICENSE-artistic2",
+    "LICENSE-gpl3"
+  ],
+  source_dirs: [
+    "tests"
+  ],
+  depends: Hash()
+)

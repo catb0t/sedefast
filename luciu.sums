@@ -1,0 +1,5 @@
+[
+Pair(0, [:source_names, :source_contents, :dir_filenames, :dir_contents]),
+Pair(1, [:source_names, :source_contents, :dir_filenames, :dir_contents]),
+Pair(2, [:source_names, :source_contents, :dir_filenames, :dir_contents]),
+]

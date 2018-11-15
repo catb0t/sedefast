@@ -1,0 +1,12 @@
+#! sidef -Wk
+
+##  GlobSum, checksum file and directory names and contents
+##    Copyright Cat Stevens 2018
+##  You should have recieved a copy of either the
+##    Artistic License 2.0 or GPLv3 with this program;
+##    if not, see <https://github.com/catb0t/sedefactor>
+
+# file name list naturally sorted
+func checksum_directory_listing (Dir name) {}
+# recursive file contents in naturally sorted order
+func checksum_directory_files (Dir name) {}

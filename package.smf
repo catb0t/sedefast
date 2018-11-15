@@ -1,7 +1,10 @@
 # describes this source repository for downstream projects
 Package(
   contains: [
-    "luciu", "sedefast"
+    "luciu", "trieste", "sedefast"
   ],
-
+  depends: Hash(
+    "argparse" => ["https://github.com/catb0t/multifactor", 0]
+  ),
+  vendor_dir: %d(vendor)
 )

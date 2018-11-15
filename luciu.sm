@@ -144,7 +144,7 @@ class Luciu (String case_name) {
       reason.result(Expression::FAIL).explain("no error caught").lock
       goto :no_exc
     } catch {
-      |type, msg|
+        |type, msg|
       if (type~~regexes[0] && msg~~regexes[1]) {
         reason.result(Expression::PASS).explain("expected error caught").lock
         goto :expected_exc
@@ -179,7 +179,7 @@ class Luciu (String case_name) {
       reason.result(Expression::PASS).caused_by([block, args]).explain("no error caught").lock
       goto reason.result
     } catch {
-      |type, msg|
+        |type, msg|
       reason.result(Expression::FAIL).caused_by([block, args, type, msg]).explain("error caught") \
         .special_parameters( Hash(:type => type, :msg => msg) ).lock
       goto reason.result
@@ -414,13 +414,14 @@ struct Config {
     "like" => [],
     "empty_like" => false,
     "always" => false
-  ), # "exact"
+  ),
   Hash ignore_crash = Hash(
     "exact" => [],
     "like" => [],
-    "always" => false
+    "always" => false,
+    # ignore warning as a crash?
+    "warning" => false,
   ),
-
 }
 
 # test-generator based on input / expectation specification
@@ -454,7 +455,7 @@ func main {
         try {
           g.go
         } catch {
-          |_, msg|
+            |_, msg|
           if (msg ~~ /STOPITERATION:STOP/) {
             say "\t!! Stopped!"
             Sys.exit(2)
@@ -531,7 +532,7 @@ func main {
     Table = ("Text::Table").require
     using_table = true
   } catch {
-    |t, msg|
+      |t, msg|
     if (! (msg.lc ~~ /can't locate/)) {
       die "#{t}! :: #{msg}"
     }
